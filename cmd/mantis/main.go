@@ -1,7 +1,11 @@
 package main
 
-import "github.com/tamerfrombk/mantis/pkg/mantis"
+import (
+	"os"
+
+	"github.com/tamerfrombk/mantis/pkg/cli"
+)
 
 func main() {
-	mantis.Parse()
+	os.Exit(cli.Run())
 }
