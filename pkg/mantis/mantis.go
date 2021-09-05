@@ -125,10 +125,10 @@ func (m *ManPage) WriteTo(path string) error {
 		return err
 	}
 
-	sections := []string{
-		"NAME",
+	if err := m.writeName(buf); err != nil {
+		return err
 	}
-	if err := m.writeSections(sections, buf); err != nil {
+	if err := m.writeSynopsis(buf); err != nil {
 		return err
 	}
 
@@ -155,15 +155,30 @@ func (m *ManPage) writeTitleLine(w io.Writer) error {
 	return nil
 }
 
-func (m *ManPage) writeSections(sections []string, w io.StringWriter) error {
-	line := ".SH " + strings.Join(sections, " ") + "\n"
-	if _, err := w.WriteString(line); err != nil {
+func (m *ManPage) writeName(w io.StringWriter) error {
+	if _, err := w.WriteString(".SH NAME\n"); err != nil {
 		return err
 	}
 
-	if _, err := w.WriteString(m.Title + " \\- " + m.Description); err != nil {
+	if _, err := w.WriteString(m.Title + " \\- " + m.Description + "\n"); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (m *ManPage) writeSynopsis(w io.Writer) error {
+	if _, err := w.Write([]byte(".SH SYNOPSIS\n")); err != nil {
+		return err
+	}
+
+	prevOutput := flag.CommandLine.Output()
+
+	flag.CommandLine.SetOutput(w)
+
+	flag.PrintDefaults()
+
+	flag.CommandLine.SetOutput(prevOutput)
 
 	return nil
 }
