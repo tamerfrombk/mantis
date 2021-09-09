@@ -196,11 +196,8 @@ func (m *ManPage) writeTitleLine(w io.Writer) error {
 }
 
 func (m *ManPage) writeName(w io.Writer) error {
-	if _, err := w.Write([]byte(".SH NAME\n")); err != nil {
-		return err
-	}
-
-	if _, err := w.Write([]byte(m.Title() + " \\- " + m.ShortDescription() + "\n")); err != nil {
+	str := ".SH NAME" + "\n" + m.Title() + " \\- " + m.ShortDescription() + "\n"
+	if _, err := w.Write([]byte(str)); err != nil {
 		return err
 	}
 
@@ -248,11 +245,9 @@ func (m *ManPage) writeOptions(w io.Writer) error {
 }
 
 func (m *ManPage) writeSeeAlso(w io.Writer) error {
-	if _, err := w.Write([]byte(".SH SEE ALSO\n")); err != nil {
-		return err
-	}
+	str := ".sh SEE ALSO" + "\n" + m.SeeAlso()
 
-	if _, err := w.Write([]byte(m.SeeAlso())); err != nil {
+	if _, err := w.Write([]byte(str)); err != nil {
 		return err
 	}
 
