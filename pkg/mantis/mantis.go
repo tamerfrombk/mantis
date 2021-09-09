@@ -54,6 +54,7 @@ type ManPage struct {
 	shortDescription string
 	longDescription  string
 	synopsis         string
+	seeAlso          string
 }
 
 type ManPageBuilder struct {
@@ -99,6 +100,12 @@ func (b ManPageBuilder) Synopsis(synopsis string) ManPageBuilder {
 	return b
 }
 
+func (b ManPageBuilder) SeeAlso(str string) ManPageBuilder {
+	b.instance.seeAlso = str
+
+	return b
+}
+
 func (b ManPageBuilder) Build() (ManPage, error) {
 	errs := NewCompositeError()
 	flagVisitor := func(f *flag.Flag) {
@@ -109,20 +116,24 @@ func (b ManPageBuilder) Build() (ManPage, error) {
 
 	flag.VisitAll(flagVisitor)
 
-	if b.instance.section < 1 || b.instance.section > 8 {
-		errs.Add(errors.New("sections can only be between 1 and 8"))
+	if b.instance.Section() < 1 || b.instance.Section() > 8 {
+		errs.Add(errors.New("sections must be between 1 and 8"))
 	}
 
-	if b.instance.title == "" {
+	if b.instance.Title() == "" {
 		errs.Add(errors.New("title must be set"))
 	}
 
-	if b.instance.shortDescription == "" {
+	if b.instance.ShortDescription() == "" {
 		errs.Add(errors.New("short description must be set"))
 	}
 
-	if b.instance.synopsis == "" {
+	if b.instance.Synopsis() == "" {
 		errs.Add(errors.New("synopsis must be set"))
+	}
+
+	if b.instance.SeeAlso() == "" {
+		errs.Add(errors.New("see also must be set"))
 	}
 
 	if errs.IsEmpty() {
@@ -150,6 +161,10 @@ func (w *ManPage) LongDescription() string {
 
 func (w *ManPage) Synopsis() string {
 	return w.synopsis
+}
+
+func (w *ManPage) SeeAlso() string {
+	return w.seeAlso
 }
 
 // Write convenience function to write the man page to a default path in the cwd
@@ -186,6 +201,7 @@ func (m *ManPage) MarshalText() ([]byte, error) {
 		m.writeSynopsis,
 		m.writeDescription,
 		m.writeOptions,
+		m.writeSeeAlso,
 	}
 
 	buf := strings.Builder{}
@@ -266,6 +282,18 @@ func (m *ManPage) writeOptions(w io.Writer) error {
 	flag.PrintDefaults()
 
 	flag.CommandLine.SetOutput(prevOutput)
+
+	return nil
+}
+
+func (m *ManPage) writeSeeAlso(w io.Writer) error {
+	if _, err := w.Write([]byte(".SH SEE ALSO\n")); err != nil {
+		return err
+	}
+
+	if _, err := w.Write([]byte(m.seeAlso)); err != nil {
+		return err
+	}
 
 	return nil
 }
