@@ -6,46 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	ce "github.com/tamerfrombk/composite_error/pkg"
 )
-
-type CompositeError struct {
-	errors []error
-}
-
-func NewCompositeError() *CompositeError {
-	return &CompositeError{
-		errors: make([]error, 0),
-	}
-}
-
-func (e *CompositeError) Add(err error) {
-	e.errors = append(e.errors, err)
-}
-
-func (e *CompositeError) IsEmpty() bool {
-	return len(e.errors) == 0
-}
-
-func (e *CompositeError) Error() string {
-	if e.IsEmpty() {
-		return ""
-	}
-
-	b := strings.Builder{}
-
-	b.WriteString(e.errors[0].Error())
-	for i := 1; i < len(e.errors); i++ {
-		b.WriteString(", ")
-		b.WriteString(e.errors[i].Error())
-		if i%2 == 0 {
-			b.WriteString("\n")
-		}
-	}
-
-	return b.String()
-}
 
 type ManPage struct {
 	section          int
@@ -107,7 +73,7 @@ func (b ManPageBuilder) SeeAlso(str string) ManPageBuilder {
 }
 
 func (b ManPageBuilder) Build() (ManPage, error) {
-	errs := NewCompositeError()
+	errs := ce.NewCompositeError()
 	flagVisitor := func(f *flag.Flag) {
 		if err := b.instance.addFlag(f.Name, f); err != nil {
 			errs.Add(err)
@@ -136,11 +102,7 @@ func (b ManPageBuilder) Build() (ManPage, error) {
 		errs.Add(errors.New("see also must be set"))
 	}
 
-	if errs.IsEmpty() {
-		return *b.instance, nil
-	}
-
-	return *b.instance, errs
+	return *b.instance, errs.Value()
 }
 
 func (w *ManPage) Section() int {
@@ -167,10 +129,10 @@ func (w *ManPage) SeeAlso() string {
 	return w.seeAlso
 }
 
-// Write convenience function to write the man page to a default path in the cwd
-// This method follows the conventions laid out in https://linux.die.net/man/7/man-pages
-func (m *ManPage) Write() error {
-	f, err := os.Create(m.title + "." + "man")
+// Save convenience function to write the man page to a file in the cwd
+// The file's name will follow the convention <title>.<section>
+func (m *ManPage) Save() error {
+	f, err := os.Create(m.Title() + "." + strconv.Itoa(m.Section()))
 	if err != nil {
 		return err
 	}
@@ -181,8 +143,7 @@ func (m *ManPage) Write() error {
 	return e
 }
 
-// WriteTo writes the man page to the supplied writer following the conventions
-// laid out in https://linux.die.net/man/7/man-pages
+// WriteTo writes the man page to the supplied writer
 func (m *ManPage) WriteTo(w io.Writer) (int64, error) {
 	text, err := m.MarshalText()
 	if err != nil {
@@ -227,7 +188,7 @@ func (w *ManPage) addFlag(name string, f *flag.Flag) error {
 func (m *ManPage) writeTitleLine(w io.Writer) error {
 	dateStr := strings.Split(time.Now().String(), " ")[0]
 
-	data := fmt.Sprintf(".TH %s %d %v %s %s\n", m.Title(), m.section, dateStr, "Linux", "Linux Programmer's Manual")
+	data := fmt.Sprintf(".TH %s %d %v %s %s\n", m.Title(), m.Section(), dateStr, "Linux", "Linux Programmer's Manual")
 
 	w.Write([]byte(data))
 
@@ -291,7 +252,7 @@ func (m *ManPage) writeSeeAlso(w io.Writer) error {
 		return err
 	}
 
-	if _, err := w.Write([]byte(m.seeAlso)); err != nil {
+	if _, err := w.Write([]byte(m.SeeAlso())); err != nil {
 		return err
 	}
 

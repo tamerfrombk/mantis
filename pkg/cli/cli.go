@@ -35,7 +35,7 @@ that contains the 4 mandatory sections and their conventions as defined here: ht
 		return 1
 	}
 
-	if err := manPage.Write(); err != nil {
+	if err := manPage.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "mantis: %v\n", err)
 		return 1
 	}
