@@ -1,7 +1,6 @@
 package mantis
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,90 +48,154 @@ func (e *CompositeError) Error() string {
 }
 
 type ManPage struct {
-	section     int
-	flags       map[string]*flag.Flag
-	Title       string
-	Description string
+	section          int
+	flags            map[string]*flag.Flag
+	title            string
+	shortDescription string
+	longDescription  string
+	synopsis         string
 }
 
-func NewManPage() *ManPage {
-	return &ManPage{
-		section: 1,
-		flags:   make(map[string]*flag.Flag),
+type ManPageBuilder struct {
+	instance *ManPage
+}
+
+func NewManPageBuilder() *ManPageBuilder {
+	return &ManPageBuilder{
+		instance: &ManPage{
+			section: 1,
+			flags:   make(map[string]*flag.Flag),
+		},
 	}
 }
 
-func (w *ManPage) SetSection(section int) error {
-	if section < 1 || section > 8 {
-		return errors.New("sections can only be between 1 and 8")
-	}
+func (b ManPageBuilder) Section(section int) ManPageBuilder {
+	b.instance.section = section
 
-	w.section = section
-
-	return nil
+	return b
 }
 
-func (w *ManPage) Section() int {
-	return w.section
+func (b ManPageBuilder) Title(title string) ManPageBuilder {
+	b.instance.title = title
+
+	return b
 }
 
-func (w *ManPage) Parse() error {
+func (b ManPageBuilder) ShortDescription(desc string) ManPageBuilder {
+	b.instance.shortDescription = desc
+
+	return b
+}
+
+func (b ManPageBuilder) LongDescription(desc string) ManPageBuilder {
+	b.instance.longDescription = desc
+
+	return b
+}
+
+func (b ManPageBuilder) Synopsis(synopsis string) ManPageBuilder {
+	b.instance.synopsis = synopsis
+
+	return b
+}
+
+func (b ManPageBuilder) Build() (ManPage, error) {
 	errs := NewCompositeError()
 	flagVisitor := func(f *flag.Flag) {
-		if err := w.addFlag(f.Name, f); err != nil {
+		if err := b.instance.addFlag(f.Name, f); err != nil {
 			errs.Add(err)
 		}
 	}
 
 	flag.VisitAll(flagVisitor)
 
-	if w.Title == "" {
+	if b.instance.section < 1 || b.instance.section > 8 {
+		errs.Add(errors.New("sections can only be between 1 and 8"))
+	}
+
+	if b.instance.title == "" {
 		errs.Add(errors.New("title must be set"))
 	}
 
-	if w.Description == "" {
-		errs.Add(errors.New("description must be set"))
+	if b.instance.shortDescription == "" {
+		errs.Add(errors.New("short description must be set"))
+	}
+
+	if b.instance.synopsis == "" {
+		errs.Add(errors.New("synopsis must be set"))
 	}
 
 	if errs.IsEmpty() {
-		return nil
+		return *b.instance, nil
 	}
 
-	return errs
+	return *b.instance, errs
+}
+
+func (w *ManPage) Section() int {
+	return w.section
+}
+
+func (w *ManPage) Title() string {
+	return w.title
+}
+
+func (w *ManPage) ShortDescription() string {
+	return w.shortDescription
+}
+
+func (w *ManPage) LongDescription() string {
+	return w.longDescription
+}
+
+func (w *ManPage) Synopsis() string {
+	return w.synopsis
 }
 
 // Write convenience function to write the man page to a default path in the cwd
 // This method follows the conventions laid out in https://linux.die.net/man/7/man-pages
-func (w *ManPage) Write() error {
-	return w.WriteTo(w.Title + "." + "man")
-}
-
-// WriteTo writes the man page to the supplied path following the conventions
-// laid out in https://linux.die.net/man/7/man-pages
-func (m *ManPage) WriteTo(path string) error {
-	if err := m.Parse(); err != nil {
-		return errors.New("failed to parse: " + err.Error())
-	}
-
-	f, err := os.Create(path)
+func (m *ManPage) Write() error {
+	f, err := os.Create(m.title + "." + "man")
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	buf := bufio.NewWriter(f)
-	if err := m.writeTitleLine(buf); err != nil {
-		return err
+	_, e := m.WriteTo(f)
+
+	return e
+}
+
+// WriteTo writes the man page to the supplied writer following the conventions
+// laid out in https://linux.die.net/man/7/man-pages
+func (m *ManPage) WriteTo(w io.Writer) (int64, error) {
+	text, err := m.MarshalText()
+	if err != nil {
+		return 0, err
 	}
 
-	if err := m.writeName(buf); err != nil {
-		return err
-	}
-	if err := m.writeSynopsis(buf); err != nil {
-		return err
+	n, err := w.Write(text)
+
+	return int64(n), err
+}
+
+func (m *ManPage) MarshalText() ([]byte, error) {
+	writes := []func(io.Writer) error{
+		m.writeTitleLine,
+		m.writeName,
+		m.writeSynopsis,
+		m.writeDescription,
+		m.writeOptions,
 	}
 
-	return buf.Flush()
+	buf := strings.Builder{}
+	for _, write := range writes {
+		if err := write(&buf); err != nil {
+			return nil, err
+		}
+	}
+
+	return []byte(buf.String()), nil
 }
 
 func (w *ManPage) addFlag(name string, f *flag.Flag) error {
@@ -148,19 +211,19 @@ func (w *ManPage) addFlag(name string, f *flag.Flag) error {
 func (m *ManPage) writeTitleLine(w io.Writer) error {
 	dateStr := strings.Split(time.Now().String(), " ")[0]
 
-	data := fmt.Sprintf(".TH %s %d %v %s %s\n", m.Title, m.section, dateStr, "Linux", "Linux Programmer's Manual")
+	data := fmt.Sprintf(".TH %s %d %v %s %s\n", m.Title(), m.section, dateStr, "Linux", "Linux Programmer's Manual")
 
 	w.Write([]byte(data))
 
 	return nil
 }
 
-func (m *ManPage) writeName(w io.StringWriter) error {
-	if _, err := w.WriteString(".SH NAME\n"); err != nil {
+func (m *ManPage) writeName(w io.Writer) error {
+	if _, err := w.Write([]byte(".SH NAME\n")); err != nil {
 		return err
 	}
 
-	if _, err := w.WriteString(m.Title + " \\- " + m.Description + "\n"); err != nil {
+	if _, err := w.Write([]byte(m.Title() + " \\- " + m.ShortDescription() + "\n")); err != nil {
 		return err
 	}
 
@@ -168,7 +231,31 @@ func (m *ManPage) writeName(w io.StringWriter) error {
 }
 
 func (m *ManPage) writeSynopsis(w io.Writer) error {
-	if _, err := w.Write([]byte(".SH SYNOPSIS\n")); err != nil {
+	synopsis := strings.Join([]string{
+		".SH SYNOPSIS", m.Synopsis(),
+	}, "\n") + "\n"
+
+	if _, err := w.Write([]byte(synopsis)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *ManPage) writeDescription(w io.Writer) error {
+	description := strings.Join([]string{
+		".SH DESCRIPTION", m.LongDescription(),
+	}, "\n") + "\n"
+
+	if _, err := w.Write([]byte(description)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *ManPage) writeOptions(w io.Writer) error {
+	if _, err := w.Write([]byte(".SH OPTIONS\n")); err != nil {
 		return err
 	}
 

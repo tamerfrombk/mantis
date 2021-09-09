@@ -18,12 +18,14 @@ func Run() int {
 		return 0
 	}
 
-	manPage := mantis.NewManPage()
-	manPage.Title = "mantis"
-	manPage.Description = "golang man page generator"
+	manPage, err := mantis.NewManPageBuilder().Title("mantis").ShortDescription("golang man page generator").LongDescription("TODO").Synopsis("generate man pages from the flag package").Section(1).Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mantis: %v\n", err)
+		return 1
+	}
 
 	if err := manPage.Write(); err != nil {
-		fmt.Fprintf(os.Stderr, "mantis: unable to write the man page %v\n", err)
+		fmt.Fprintf(os.Stderr, "mantis: %v\n", err)
 		return 1
 	}
 
